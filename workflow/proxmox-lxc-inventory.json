@@ -1,0 +1,497 @@
+{
+  "name": "Proxmox LXC Inventory",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -2200,
+        0
+      ],
+      "id": "shared-trigger-001",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "requestMethod": "PUT",
+        "url": "https://YOUR_BOOKSTACK_DOMAIN/api/pages/YOUR_LXC_PAGE_ID",
+        "options": {
+          "bodyContentType": "json"
+        },
+        "bodyParametersUi": {
+          "parameter": [
+            {
+              "name": "name",
+              "value": "=Inventaire LXC"
+            },
+            {
+              "name": "editor",
+              "value": "markdown"
+            },
+            {
+              "name": "markdown",
+              "value": "={{ $json.markdown }}"
+            }
+          ]
+        }
+      },
+      "id": "8782e2db-38f7-4ea8-aee4-08db0738155a",
+      "name": "Update BookStack LXC Page",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        1136,
+        -144
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_BOOKSTACK_CRED_ID",
+          "name": "BookStack API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "url": "https://PROXMOX_HOST_1:8006/api2/json/nodes/PROXMOX_NODE_1/lxc",
+        "allowUnauthorizedCerts": true,
+        "options": {}
+      },
+      "id": "b10d4921-0a59-41ed-8fec-3a1f771e6b86",
+      "name": "Get LXC List (Node 1)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        -1456,
+        -304
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_PROXMOX_CRED_ID",
+          "name": "Proxmox API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "url": "https://PROXMOX_HOST_2:8006/api2/json/nodes/PROXMOX_NODE_2/lxc",
+        "allowUnauthorizedCerts": true,
+        "options": {}
+      },
+      "id": "3d54058e-486d-4701-a26b-ad01d5fdf35c",
+      "name": "Get LXC List (Node 2)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        -1456,
+        0
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_PROXMOX_CRED_ID",
+          "name": "Proxmox API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "aa5c9a2b-c7fd-4f7c-b025-e42cef7d30e5",
+              "name": "list",
+              "value": "={{ ($json.data ?? []).map(it => ({ ...it, node: 'PROXMOX_NODE_1', type: 'lxc', server_ip: 'PROXMOX_HOST_1' })) }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1136,
+        -304
+      ],
+      "id": "d400990d-d018-408e-ab06-86865c4e79bf",
+      "name": "Map LXC Node 1"
+    },
+    {
+      "parameters": {
+        "numberInputs": 3
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -496,
+        -208
+      ],
+      "id": "a9cfb9a1-089f-4297-869e-e59f5d822a42",
+      "name": "Merge LXC Nodes"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "aa5c9a2b-c7fd-4f7c-b025-e42cef7d30e5",
+              "name": "list",
+              "value": "={{ ($json.data ?? []).map(it => ({ ...it, node: 'PROXMOX_NODE_2', type: 'lxc', server_ip: 'PROXMOX_HOST_2' })) }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1152,
+        0
+      ],
+      "id": "f813c70d-dda9-4bd1-bb4b-23c42918745f",
+      "name": "Map LXC Node 2"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: items = [{ json: { node, vmid, name, type, status, cpu, mem, maxmem, data: {...} } }, ...]\n// Output: items = [{ json: { node, vmid, hostname, type, status, cpu_pct, ram:{used, total, pct, used_h, total_h}, interfaces:[{name, ip, gw, bridge}] } }, ...]\n\nfunction toBytesStr(n) {\n  if (n == null) return '';\n  const units = ['B','KB','MB','GB','TB','PB'];\n  let i = 0; let v = Number(n);\n  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }\n  return `${v.toFixed(2)} ${units[i]}`;\n}\nfunction pct(used, total) {\n  if (!total) return 0;\n  return Number(((Number(used) / Number(total)) * 100).toFixed(1));\n}\nfunction parseKVString(s) {\n  const out = {};\n  if (!s || typeof s !== 'string') return out;\n  for (const part of s.split(',')) {\n    const idx = part.indexOf('=');\n    if (idx === -1) continue;\n    const k = part.slice(0, idx).trim();\n    const v = part.slice(idx + 1).trim();\n    out[k] = v;\n  }\n  return out;\n}\n\nreturn items.map(it => {\n  const r = it.json || {};\n  const d = r.data || {};\n\n  // RAM\n  const memUsed = Number(r.mem || 0);\n  const memTotal = Number(r.maxmem || 0);\n\n  // Interfaces: net0..netX\n  const interfaces = [];\n  Object.entries(d)\n    .filter(([k]) => k.startsWith('net'))\n    .sort(([a], [b]) => a.localeCompare(b))\n    .forEach(([k, val]) => {\n      const n = parseKVString(val);\n      interfaces.push({\n        name: n.name || k,                                   // eth0/ens18…\n        ip: (n.ip || '').split('/')[0] || null,              // 10.x.x.x\n        gw: n.gw || null,                                    // 10.x.x.1\n        bridge: n.bridge || null,                            // vmbr2…\n      });\n    });\n\n  const out = {\n    node: r.node || '',\n    vmid: r.vmid,\n    hostname: d.hostname || r.name || '',\n    type: r.type || 'lxc',\n    status: r.status || '',\n    cpu_pct: Number(((r.cpu || 0) * 100).toFixed(2)),\n    ram: {\n      used: memUsed,\n      total: memTotal,\n      pct: pct(memUsed, memTotal),\n      used_h: toBytesStr(memUsed),\n      total_h: toBytesStr(memTotal),\n    },\n    interfaces,\n  };\n\n  return { json: out };\n});\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        464,
+        -144
+      ],
+      "id": "cb9759b3-8ade-46c8-8d95-630fb58eca35",
+      "name": "Normalize LXC Data"
+    },
+    {
+      "parameters": {
+        "url": "=https://{{ $json.server_ip }}:8006/api2/json/nodes/{{ $json.node }}/lxc/{{ $json.vmid }}/config",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -64,
+        128
+      ],
+      "id": "9f32126a-91dc-4a52-9a33-325e88ae1330",
+      "name": "Get LXC Config",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_PROXMOX_CRED_ID",
+          "name": "Proxmox API Token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Input: items = [{ json: { node, vmid, hostname, type, status, cpu_pct, ram:{used_h,total_h,pct}, interfaces:[{name,ip,gw,bridge}]} }, ...]\n// Output: [{ json: { markdown: \"...\" } }]\n\nfunction fmtCPU(x) {\n  const n = Number(x || 0);\n  return `${n.toFixed(2)}%`;\n}\nfunction fmtRAM(ram) {\n  if (!ram) return '—';\n  const u = ram.used_h || '—';\n  const t = ram.total_h || '—';\n  const p = (ram.pct != null) ? `${Number(ram.pct).toFixed(1)}%` : '—';\n  return `${u} / ${t} (${p})`;\n}\nfunction fmtStatus(s) {\n  // Petit badge visuel\n  if (s === 'running') return '🟢 running';\n  if (s === 'stopped') return '⚪ stopped';\n  return s || '—';\n}\nfunction fmtInterfaces(list) {\n  if (!Array.isArray(list) || list.length === 0) return '—';\n  // Une ligne par interface ; <br> marche dans BookStack\n  return list.map(n => {\n    const name = n.name || 'iface';\n    const ip = n.ip || '—';\n    const gw = n.gw || '—';\n    const br = n.bridge || '—';\n    // ex: eth0: x.x.x.x (gw x.x.x.1) [vmbr2]\n    return `${name}: ${ip} (gw ${gw}) [${br}]`;\n  }).join('<br>');\n}\n\n// Groupement par node\nconst byNode = {};\nfor (const it of items) {\n  const o = it.json || {};\n  const node = o.node || 'unknown';\n  if (!byNode[node]) byNode[node] = [];\n  byNode[node].push(o);\n}\n\n// Tri: running d'abord, puis hostname\nfor (const node of Object.keys(byNode)) {\n  byNode[node].sort((a, b) => {\n    const sa = a.status === 'running' ? 0 : 1;\n    const sb = b.status === 'running' ? 0 : 1;\n    if (sa !== sb) return sa - sb;\n    const ha = (a.hostname || '').toLowerCase();\n    const hb = (b.hostname || '').toLowerCase();\n    if (ha < hb) return -1;\n    if (ha > hb) return 1;\n    return (a.vmid || 0) - (b.vmid || 0);\n  });\n}\n\n// Construction Markdown\nconst now = new Date().toISOString().replace('T', ' ').replace(/\\.\\d+Z$/, ' UTC');\nlet md = `# Inventaire LXC — Proxmox\\n\\n_MAJ: ${now}_\\n\\n`;\n\nfor (const node of Object.keys(byNode).sort()) {\n  const arr = byNode[node];\n  md += `## Nœud: \\`${node}\\` (${arr.length} LXC)\\n\\n`;\n  md += `| VMID | Hostname | Type | Status | CPU | RAM | Interfaces |\\n`;\n  md += `|-----:|---------:|:-----|:-------|----:|:----|:-----------|\\n`;\n\n  for (const o of arr) {\n    const vmid = o.vmid ?? '—';\n    const host = o.hostname || '—';\n    const type = o.type || '—';\n    const status = fmtStatus(o.status);\n    const cpu = fmtCPU(o.cpu_pct);\n    const ram = fmtRAM(o.ram);\n    const ifs = fmtInterfaces(o.interfaces);\n\n    // Attention aux pipes dans les cellules — ici on n’en a pas\n    md += `| ${vmid} | ${host} | ${type} | ${status} | ${cpu} | ${ram} | ${ifs} |\\n`;\n  }\n\n  md += `\\n`;\n}\n\n// Optionnel : on prépare un emplacement pour la liste incrémentielle d’IPs.\n// Si tu fais le merge plus tard, tu remplacerais/compléterais ce commentaire.\nmd += `<!-- KNOWN_IPS:[] -->\\n`;\n\nreturn [{ json: { markdown: md } }];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        720,
+        -144
+      ],
+      "id": "a3b5d1bb-7fca-41d4-9597-aacf427bc819",
+      "name": "Generate LXC Markdown"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "list",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -928,
+        -304
+      ],
+      "id": "1fd34d12-ffe9-4621-867e-94dad560de65",
+      "name": "Split LXC Items (Node 1)"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "list",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -944,
+        0
+      ],
+      "id": "5f2aeb9d-8232-4029-b334-09e99ffa0477",
+      "name": "Split LXC Items (Node 2)"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        64,
+        -176
+      ],
+      "id": "34d0518a-c68e-454c-abd8-f2caecf549eb",
+      "name": "Combine LXC Config",
+      "alwaysOutputData": false
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        624,
+        272
+      ],
+      "id": "6e474df0-fa65-427d-bbaa-a579af456714",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_NTFY_DOMAIN/YOUR_NTFY_TOPIC",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"⚠️ Workflow n8n en erreur\",\n  \"message\": \"Workflow: {{$json.workflow.name}}\\nErreur: {{$json.error.message}}\\nNode: {{$json.error.node.name}}\\nExecuté le: {{$json.execution.startedAt}}\",\n  \"tags\": [\"warning\", \"n8n\", \"error\"],\n  \"priority\": 4\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        832,
+        272
+      ],
+      "id": "d5981a64-800d-4d26-8442-7dc47acfa3b2",
+      "name": "Send ntfy Error Notification"
+    },
+    {
+      "parameters": {
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "url": "https://PROXMOX_HOST_3:8006/api2/json/nodes/PROXMOX_NODE_3/lxc",
+        "allowUnauthorizedCerts": true,
+        "options": {}
+      },
+      "id": "1e724521-381e-44a0-8c69-b3dfc95c0dec",
+      "name": "Get LXC List (Node 3)",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 2,
+      "position": [
+        -1456,
+        224
+      ],
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_PROXMOX_CRED_ID",
+          "name": "Proxmox API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "aa5c9a2b-c7fd-4f7c-b025-e42cef7d30e5",
+              "name": "list",
+              "value": "={{ ($json.data ?? []).map(it => ({ ...it, node: 'PROXMOX_NODE_3', type: 'lxc', server_ip: 'PROXMOX_HOST_3' })) }}",
+              "type": "array"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -1152,
+        224
+      ],
+      "id": "9a67a47e-55be-457b-a157-e259aec828c0",
+      "name": "Map LXC Node 3"
+    },
+    {
+      "parameters": {
+        "fieldToSplitOut": "list",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.splitOut",
+      "typeVersion": 1,
+      "position": [
+        -944,
+        224
+      ],
+      "id": "d18d5f1f-cbde-4559-9b07-6db522d5caf4",
+      "name": "Split LXC Items (Node 3)"
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ Before You Start\n\nBefore enabling this workflow:\n\n1. Replace **all placeholders** in every HTTP node\n2. Configure **Proxmox credentials** (HTTP Header Auth)\n3. Configure **BookStack credentials** (HTTP Header Auth)\n4. Enable **QEMU Guest Agent** on all QEMU VMs\n5. Run manually **once** before enabling the schedule\n\nSee `docs/installation.md` for step-by-step instructions.",
+        "height": 280,
+        "width": 420,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2200,
+        -320
+      ],
+      "id": "sticky-intro-001",
+      "name": "📋 Setup Instructions"
+    },
+    {
+      "parameters": {
+        "content": "## 🔐 Proxmox API Token\n\nThis workflow uses the **Proxmox REST API**.\n\nCreate a dedicated **read-only** API token:\n\n```\nPVEAPITOKEN=user@realm!tokenid=secret\n```\n\nMinimum required permissions:\n- `VM.Audit`\n- `Sys.Audit`\n- `Datastore.Audit`\n\nSee `docs/proxmox-api-token.md`",
+        "height": 260,
+        "width": 380,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1700,
+        -380
+      ],
+      "id": "sticky-proxmox-001",
+      "name": "🔐 Proxmox API Note"
+    },
+    {
+      "parameters": {
+        "content": "## 📚 BookStack Integration\n\nBookStack pages are updated via the **BookStack API**.\n\n- Use **dedicated pages** for generated inventory\n- Never point to a page with manual documentation\n- Retrieve the Page ID from the BookStack URL\n\nSee `docs/bookstack-setup.md`",
+        "height": 220,
+        "width": 360,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        900,
+        -320
+      ],
+      "id": "sticky-bookstack-001",
+      "name": "📚 BookStack Note"
+    },
+    {
+      "parameters": {
+        "content": "## 🔔 ntfy Notifications\n\n`ntfy` is **optional** — used only for workflow error notifications.\n\nIf you don't use ntfy:\n- Delete or disable `Error Trigger` and `Send ntfy Error Notification`\n- No other part of the workflow is affected\n\nSelf-hosted ntfy: https://ntfy.sh/docs/install/",
+        "height": 200,
+        "width": 340,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        620,
+        140
+      ],
+      "id": "sticky-ntfy-001",
+      "name": "🔔 ntfy Note"
+    }
+  ],
+  "connections": {
+    "Get LXC List (Node 1)": [
+      []
+    ],
+    "Get LXC List (Node 2)": [
+      []
+    ],
+    "Update BookStack LXC Page": [
+      []
+    ],
+    "Map LXC Node 1": [
+      []
+    ],
+    "Merge LXC Nodes": [
+      []
+    ],
+    "Map LXC Node 2": [
+      []
+    ],
+    "Normalize LXC Data": [
+      []
+    ],
+    "Get LXC Config": [
+      []
+    ],
+    "Generate LXC Markdown": [
+      []
+    ],
+    "Split LXC Items (Node 1)": [
+      []
+    ],
+    "Split LXC Items (Node 2)": [
+      []
+    ],
+    "Combine LXC Config": [
+      []
+    ],
+    "Error Trigger": [
+      []
+    ],
+    "Get LXC List (Node 3)": [
+      []
+    ],
+    "Map LXC Node 3": [
+      []
+    ],
+    "Split LXC Items (Node 3)": [
+      []
+    ],
+    "Schedule Trigger": [
+      []
+    ]
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": ""
+  },
+  "meta": {
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "tags": []
+}

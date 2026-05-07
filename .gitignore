@@ -1,0 +1,29 @@
+# Environment variables — never commit secrets
+.env
+.env.*
+!.env.example
+
+# Backup and temp files
+*.bak
+*.tmp
+*.orig
+
+# macOS
+.DS_Store
+.AppleDouble
+
+# Linux
+*~
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Editor directories
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# n8n local exports with credentials (use sanitized versions from workflow/)
+*.credentials.json

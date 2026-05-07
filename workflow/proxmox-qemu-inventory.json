@@ -1,0 +1,537 @@
+{
+  "name": "Proxmox QEMU Inventory",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "triggerAtHour": 8
+            }
+          ]
+        }
+      },
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.3,
+      "position": [
+        -2200,
+        0
+      ],
+      "id": "shared-trigger-001",
+      "name": "Schedule Trigger"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.errorTrigger",
+      "typeVersion": 1,
+      "position": [
+        624,
+        272
+      ],
+      "id": "6e474df0-fa65-427d-bbaa-a579af456714",
+      "name": "Error Trigger"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://YOUR_NTFY_DOMAIN/YOUR_NTFY_TOPIC",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={\n  \"title\": \"⚠️ Workflow n8n en erreur\",\n  \"message\": \"Workflow: {{$json.workflow.name}}\\nErreur: {{$json.error.message}}\\nNode: {{$json.error.node.name}}\\nExecuté le: {{$json.execution.startedAt}}\",\n  \"tags\": [\"warning\", \"n8n\", \"error\"],\n  \"priority\": 4\n}\n",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        832,
+        272
+      ],
+      "id": "d5981a64-800d-4d26-8442-7dc47acfa3b2",
+      "name": "Send ntfy Error Notification"
+    },
+    {
+      "parameters": {
+        "url": "https://PROXMOX_HOST_1:8006/api2/json/cluster/resources?type=vm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1008,
+        432
+      ],
+      "id": "9f5a6a16-3cc1-44fe-94b0-a6d1a2bec6ea",
+      "name": "Get QEMU List (Node 1)",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_PROXMOX_CRED_ID",
+          "name": "Proxmox API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $json.data || [];\nconst qemu = items.filter(vm => vm.type === 'qemu' && vm.status === 'running');\nreturn qemu.map(vm => ({\n  json: {\n    node: vm.node,\n    vmid: vm.vmid,\n    name: vm.name\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        432
+      ],
+      "id": "e1772d46-3ce9-42ae-9ed9-30e93db74fc3",
+      "name": "Filter Running QEMU VMs (Node 1)"
+    },
+    {
+      "parameters": {
+        "url": "https://PROXMOX_HOST_2:8006/api2/json/cluster/resources?type=vm",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true,
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        -1008,
+        752
+      ],
+      "id": "5bccc47b-f0f1-4987-8fd8-fd3621de2416",
+      "name": "Get QEMU List (Node 2)",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_PROXMOX_CRED_ID",
+          "name": "Proxmox API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "98ceaaa8-dda9-44b4-9ca9-aa8e154d5246",
+              "name": "node",
+              "value": "={{ $json.node }}",
+              "type": "string"
+            },
+            {
+              "id": "d2f7fe50-0b04-442a-a5ae-9e9d71d002e9",
+              "name": "vmid",
+              "value": "={{ $json.vmid }}",
+              "type": "number"
+            },
+            {
+              "id": "2f7a533d-aae7-4880-b523-561592603645",
+              "name": "name",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -624,
+        432
+      ],
+      "id": "c2a7edc0-d67b-4b10-816f-812d0617e6ea",
+      "name": "Normalize QEMU Fields (Node 1)"
+    },
+    {
+      "parameters": {
+        "assignments": {
+          "assignments": [
+            {
+              "id": "66d4aa25-776b-4aa8-9edb-457c828f66ac",
+              "name": "node",
+              "value": "={{ $json.node }}",
+              "type": "string"
+            },
+            {
+              "id": "8f1db4e9-35ac-4fdc-bc2b-d09fb523d48c",
+              "name": "vmid",
+              "value": "={{ $json.vmid }}",
+              "type": "number"
+            },
+            {
+              "id": "22f2e52c-4291-4409-9f09-8e202da005f5",
+              "name": "name",
+              "value": "={{ $json.name }}",
+              "type": "string"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        -608,
+        752
+      ],
+      "id": "1fe4c868-bd66-42fc-9ec3-3bfb5a648425",
+      "name": "Normalize QEMU Fields (Node 2)"
+    },
+    {
+      "parameters": {
+        "jsCode": "const items = $json.data || [];\nconst qemu = items.filter(vm => vm.type === 'qemu' && vm.status === 'running');\nreturn qemu.map(vm => ({\n  json: {\n    node: vm.node,\n    vmid: vm.vmid,\n    name: vm.name\n  }\n}));\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        752
+      ],
+      "id": "3bd4fc78-b4c8-460a-8629-b897757cb566",
+      "name": "Filter Running QEMU VMs (Node 2)"
+    },
+    {
+      "parameters": {
+        "mode": "combine",
+        "combineBy": "combineByPosition",
+        "options": {}
+      },
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        176,
+        592
+      ],
+      "id": "e1156f03-a2a8-4ec4-b402-6cce57bba5d4",
+      "name": "Merge QEMU Config And Network"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code node\n// Mode: Run Once for All Items\n\n// Récupère tous les items de Merge QEMU Nodes (node/vmid/name)\nconst merge2Items = $items('Merge QEMU Nodes', 0); // runIndex 0\n// Récupère tous les items de Merge QEMU Config And Network (GA network-get-interfaces)\nconst merge1Items = $items('Merge QEMU Config And Network', 0); // runIndex 0\n\nconst out = [];\n\n// petite fonction utilitaire pour filtrer les IPv4 valides\nfunction isValidIPv4(ip) {\n  if (!ip) return false;\n  if (ip === '127.0.0.1') return false;          // loopback\n  if (ip.startsWith('169.254.')) return false;   // APIPA\n  return true;\n}\n\nfor (let i = 0; i < merge2Items.length; i++) {\n  const ctx = merge2Items[i]?.json || {};\n  const ga  = merge1Items[i]?.json || {};\n\n  const node = ctx.node || null;\n  const vmid = ctx.vmid || null;\n  const hostname = ctx.name || null;\n\n  const result = (ga.data && ga.data.result) || [];\n  const interfaces = [];\n\n  for (const iface of result) {\n    const ifName = iface.name || '';\n    const macRaw = iface['hardware-address'] || '';\n    const mac = macRaw.toLowerCase();\n\n    // skip MAC nulles\n    if (!mac || mac === '00:00:00:00:00:00') continue;\n\n    const ipAddrs = iface['ip-addresses'] || [];\n    const ipv4s = ipAddrs\n      .filter(ip => ip['ip-address-type'] === 'ipv4')\n      .map(ip => ip['ip-address'])\n      .filter(isValidIPv4);\n\n    for (const ip of ipv4s) {\n      interfaces.push({\n        name: ifName,\n        mac,\n        ip,\n      });\n    }\n  }\n\n  out.push({\n    json: {\n      node,\n      vmid,\n      hostname,\n      interfaces,\n    },\n  });\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        544,
+        592
+      ],
+      "id": "6a069498-1705-4942-bd47-68be594d8ac1",
+      "name": "Extract QEMU Network Info"
+    },
+    {
+      "parameters": {
+        "method": "PUT",
+        "url": "=https://YOUR_BOOKSTACK_DOMAIN/api/pages/YOUR_QEMU_PAGE_ID",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "name",
+              "value": "Inventaire QEMU"
+            },
+            {
+              "name": "editor",
+              "value": "markdown"
+            },
+            {
+              "name": "markdown",
+              "value": "={{ $json.markdown }}"
+            },
+            {
+              "name": "book_id",
+              "value": "1"
+            }
+          ]
+        },
+        "options": {
+          "response": {
+            "response": {
+              "responseFormat": "json"
+            }
+          }
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        592
+      ],
+      "id": "347d54ae-9b6b-4dad-b554-f5081e7ee4bc",
+      "name": "Update BookStack QEMU Page",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_BOOKSTACK_CRED_ID",
+          "name": "BookStack API Token"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Node: QEMU → Markdown (simple)\n// Mode: Run Once for All Items\n\n// On récupère toutes les VMs\nconst vms = items.map(i => i.json);\n\n// Optionnel : trier par node puis VMID si tu veux un ordre stable\nvms.sort((a, b) => {\n  if ((a.node || \"\") < (b.node || \"\")) return -1;\n  if ((a.node || \"\") > (b.node || \"\")) return 1;\n  return (a.vmid || 0) - (b.vmid || 0);\n});\n\n// Fonction pour formater les interfaces d'une VM\nfunction formatInterfaces(vm) {\n  if (!vm.interfaces || vm.interfaces.length === 0) {\n    return \"\";\n  }\n\n  // Tri des interfaces dans l'ordre net0, net1, net2,...\n  const list = [...vm.interfaces].sort((a, b) =>\n    (a.name || \"\").localeCompare(b.name || \"\", undefined, { numeric: true })\n  );\n\n  return list\n    .map(intf => {\n      const ip = intf.ip || \"\";\n      const bridge = intf.bridge ? ` [${intf.bridge}]` : \"\";\n      return `${intf.name}: ${ip}${bridge}`;\n    })\n    .join(\"<br>\");\n}\n\n// Construction du markdown\nlet md = `# Inventaire IP — VMs QEMU\\n\\n_MAJ: ${new Date().toISOString()}_\\n\\n`;\n\nmd += `| VMID | Hostname | Interfaces |\\n`;\nmd += `|-----:|----------|:-----------|\\n`;\n\nfor (const vm of vms) {\n  const vmid = vm.vmid ?? \"—\";\n  const hostname = vm.hostname ?? vm.name ?? \"—\";\n  const interfaces = formatInterfaces(vm);\n\n  md += `| ${vmid} | ${hostname} | ${interfaces} |\\n`;\n}\n\nmd += `\\n<!-- KNOWN_IPS:[] -->\\n`;\n\nreturn [\n  {\n    json: {\n      markdown: md,\n    },\n  },\n];\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        944,
+        592
+      ],
+      "id": "3f6f7c6a-35f4-4462-81eb-d8e02d554dbb",
+      "name": "Generate QEMU Markdown"
+    },
+    {
+      "parameters": {
+        "url": "=https://PROXMOX_HOST_1:8006/api2/json/nodes/{{ $json.node }}/qemu/{{ $json.vmid }}/agent/network-get-interfaces",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -96,
+        752
+      ],
+      "id": "a16f932f-bb4d-49aa-a674-107de544ff92",
+      "name": "Get QEMU Network Interfaces (Node 2)",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_PROXMOX_CRED_ID",
+          "name": "Proxmox API Token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "url": "=https://PROXMOX_HOST_1:8006/api2/json/nodes/{{$json.node}}/qemu/{{$json.vmid}}/agent/network-get-interfaces",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "options": {
+          "allowUnauthorizedCerts": true
+        }
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.3,
+      "position": [
+        -96,
+        416
+      ],
+      "id": "07da211d-1dcd-45b5-b0d9-134364008606",
+      "name": "Get QEMU Agent Config (Node 1)",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "YOUR_PROXMOX_CRED_ID",
+          "name": "Proxmox API Token"
+        }
+      },
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        -384,
+        592
+      ],
+      "id": "594a97a3-6d1d-453a-89ec-353f32cf2074",
+      "name": "Merge QEMU Nodes"
+    },
+    {
+      "parameters": {},
+      "type": "n8n-nodes-base.merge",
+      "typeVersion": 3.2,
+      "position": [
+        400,
+        256
+      ],
+      "id": "06540bf1-2595-4029-b5ab-b54d70c3b94a",
+      "name": "Merge QEMU Data"
+    },
+    {
+      "parameters": {
+        "jsCode": "// Code node \"Dedup VMs\"\n// Mode: Run Once for All Items\n\nconst seen = new Set();\nconst out = [];\n\nfor (const item of items) {\n  const j = item.json || {};\n\n  // On fabrique une clé unique par VM\n  const node = j.node || j.nodename || '';\n  const vmid = j.vmid != null ? String(j.vmid) : '';\n  const hostname = j.hostname || j.name || '';\n\n  const key = `${node}|${vmid}|${hostname}`;\n\n  if (seen.has(key)) {\n    // VM déjà vue -> on la zappe\n    continue;\n  }\n\n  seen.add(key);\n  out.push(item);\n}\n\nreturn out;\n"
+      },
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        752,
+        592
+      ],
+      "id": "9c6ba5d8-b62d-49eb-be0d-ff31b3923f99",
+      "name": "Deduplicate QEMU VMs"
+    },
+    {
+      "parameters": {
+        "content": "## ⚙️ Before You Start\n\nBefore enabling this workflow:\n\n1. Replace **all placeholders** in every HTTP node\n2. Configure **Proxmox credentials** (HTTP Header Auth)\n3. Configure **BookStack credentials** (HTTP Header Auth)\n4. Enable **QEMU Guest Agent** on all QEMU VMs\n5. Run manually **once** before enabling the schedule\n\nSee `docs/installation.md` for step-by-step instructions.",
+        "height": 280,
+        "width": 420,
+        "color": 7
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -2200,
+        -320
+      ],
+      "id": "sticky-intro-001",
+      "name": "📋 Setup Instructions"
+    },
+    {
+      "parameters": {
+        "content": "## 🔐 Proxmox API Token\n\nThis workflow uses the **Proxmox REST API**.\n\nCreate a dedicated **read-only** API token:\n\n```\nPVEAPITOKEN=user@realm!tokenid=secret\n```\n\nMinimum required permissions:\n- `VM.Audit`\n- `Sys.Audit`\n- `Datastore.Audit`\n\nSee `docs/proxmox-api-token.md`",
+        "height": 260,
+        "width": 380,
+        "color": 3
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1700,
+        -380
+      ],
+      "id": "sticky-proxmox-001",
+      "name": "🔐 Proxmox API Note"
+    },
+    {
+      "parameters": {
+        "content": "## 🖥️ QEMU Guest Agent\n\nQEMU IP discovery requires the **QEMU Guest Agent** to be installed and running inside each VM.\n\nIf no IP is returned for a VM:\n1. Check the agent is installed: `qemu-guest-agent`\n2. Check it is enabled in Proxmox VM options\n3. Check it is running: `systemctl status qemu-guest-agent`\n\nSee `docs/troubleshooting.md`",
+        "height": 240,
+        "width": 380,
+        "color": 4
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -1100,
+        640
+      ],
+      "id": "sticky-qemu-001",
+      "name": "🖥️ QEMU Agent Note"
+    },
+    {
+      "parameters": {
+        "content": "## 📚 BookStack Integration\n\nBookStack pages are updated via the **BookStack API**.\n\n- Use **dedicated pages** for generated inventory\n- Never point to a page with manual documentation\n- Retrieve the Page ID from the BookStack URL\n\nSee `docs/bookstack-setup.md`",
+        "height": 220,
+        "width": 360,
+        "color": 5
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        900,
+        -320
+      ],
+      "id": "sticky-bookstack-001",
+      "name": "📚 BookStack Note"
+    },
+    {
+      "parameters": {
+        "content": "## 🔔 ntfy Notifications\n\n`ntfy` is **optional** — used only for workflow error notifications.\n\nIf you don't use ntfy:\n- Delete or disable `Error Trigger` and `Send ntfy Error Notification`\n- No other part of the workflow is affected\n\nSelf-hosted ntfy: https://ntfy.sh/docs/install/",
+        "height": 200,
+        "width": 340,
+        "color": 6
+      },
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        620,
+        140
+      ],
+      "id": "sticky-ntfy-001",
+      "name": "🔔 ntfy Note"
+    }
+  ],
+  "connections": {
+    "Error Trigger": [
+      []
+    ],
+    "Get QEMU List (Node 1)": [
+      []
+    ],
+    "Filter Running QEMU VMs (Node 1)": [
+      []
+    ],
+    "Get QEMU List (Node 2)": [
+      []
+    ],
+    "Normalize QEMU Fields (Node 1)": [
+      []
+    ],
+    "Normalize QEMU Fields (Node 2)": [
+      []
+    ],
+    "Filter Running QEMU VMs (Node 2)": [
+      []
+    ],
+    "Merge QEMU Config And Network": [
+      []
+    ],
+    "Extract QEMU Network Info": [
+      []
+    ],
+    "Update BookStack QEMU Page": [
+      []
+    ],
+    "Generate QEMU Markdown": [
+      []
+    ],
+    "Get QEMU Network Interfaces (Node 2)": [
+      []
+    ],
+    "Get QEMU Agent Config (Node 1)": [
+      []
+    ],
+    "Merge QEMU Nodes": [
+      []
+    ],
+    "Merge QEMU Data": [
+      []
+    ],
+    "Deduplicate QEMU VMs": [
+      []
+    ],
+    "Schedule Trigger": [
+      []
+    ]
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "callerPolicy": "workflowsFromSameOwner",
+    "availableInMCP": false,
+    "errorWorkflow": ""
+  },
+  "meta": {
+    "instanceId": "YOUR_N8N_INSTANCE_ID"
+  },
+  "tags": []
+}
